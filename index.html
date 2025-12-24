@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2021 CKD-EPI eGFR 計算器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        medical: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9', // Sky blue like Sanford often uses
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        alert: {
+                            green: '#22c55e',
+                            yellow: '#eab308',
+                            orange: '#f97316',
+                            red: '#ef4444',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles to mimic app-like feel */
+        body {
+            background-color: #f2f2f7; /* iOS grouped background color */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .input-group {
+            background-color: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .input-row {
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+        }
+        .input-row:last-child {
+            border-bottom: none;
+        }
+        .input-field {
+            text-align: right;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 1.1rem;
+            color: #1f2937;
+            width: 120px;
+        }
+        .toggle-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .toggle-btn.active {
+            background-color: #0369a1; /* medical-700 */
+            color: white;
+        }
+        .toggle-btn.inactive {
+            background-color: #f3f4f6;
+            color: #6b7280;
+        }
+        /* Hide number input arrows */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+    </style>
+</head>
+<body class="pb-10">
+
+    <!-- Header -->
+    <header class="bg-medical-700 text-white p-4 shadow-md sticky top-0 z-10">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold">eGFR Calculator</h1>
+            <span class="text-xs bg-medical-800 px-2 py-1 rounded">2021 CKD-EPI</span>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto p-4 space-y-6">
+
+        <!-- Reference Info Card -->
+        <div class="bg-blue-50 border-l-4 border-medical-600 p-4 text-sm text-medical-900 rounded-r shadow-sm">
+            <p class="font-bold mb-1">公式來源</p>
+            <p>2021 CKD-EPI Creatinine Equation (無種族係數)。</p>
+            <p class="text-xs mt-1 text-gray-500">適用於慢性腎臟病防治基金會指引。</p>
+        </div>
+
+        <!-- Inputs Section -->
+        <div>
+            <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 ml-2">病患參數 (Parameters)</h2>
+            <div class="input-group">
+                
+                <!-- Gender Input -->
+                <div class="input-row">
+                    <label class="font-medium text-gray-700">性別 (Gender)</label>
+                    <div class="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+                        <button id="btn-male" class="toggle-btn active" onclick="setGender('male')">男性</button>
+                        <button id="btn-female" class="toggle-btn inactive" onclick="setGender('female')">女性</button>
+                    </div>
+                </div>
+
+                <!-- Age Input -->
+                <div class="input-row">
+                    <label class="font-medium text-gray-700">年齡 (Age)</label>
+                    <div class="flex items-center">
+                        <input type="number" id="age" placeholder="0" class="input-field" oninput="calculate()">
+                        <span class="ml-2 text-gray-400 w-8">歲</span>
+                    </div>
+                </div>
+
+                <!-- Scr Input -->
+                <div class="input-row">
+                    <label class="font-medium text-gray-700">肌酸酐 (Scr)</label>
+                    <div class="flex items-center">
+                        <input type="number" id="scr" placeholder="0.0" step="0.01" class="input-field" oninput="calculate()">
+                        <span class="ml-2 text-gray-400 w-8">mg/dL</span>
+                    </div>
+                </div>
+
+            </div>
+            <p class="text-xs text-gray-500 mt-2 ml-2">*請輸入血清肌酸酐數值與實歲年齡</p>
+        </div>
+
+        <!-- Result Section -->
+        <div id="result-container" class="opacity-50 transition-opacity duration-300">
+            <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 ml-2">計算結果 (Result)</h2>
+            <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                <div class="p-6 text-center border-b border-gray-100">
+                    <p class="text-gray-500 text-sm mb-1">eGFR (mL/min/1.73m²)</p>
+                    <div id="egfr-value" class="text-5xl font-bold text-gray-800 my-2">--</div>
+                    <div id="stage-badge" class="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-500">
+                        等待輸入...
+                    </div>
+                </div>
+                <div class="p-4 bg-gray-50 text-sm text-gray-600">
+                    <div class="flex justify-between mb-1">
+                        <span>CKD 分期:</span>
+                        <span id="stage-desc" class="font-medium">--</span>
+                    </div>
+                    <p id="clinical-note" class="text-xs text-gray-500 mt-2 leading-relaxed">
+                        <!-- Clinical note will appear here -->
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CKD Stages Reference Table -->
+        <div class="mt-8">
+            <h3 class="text-xs font-bold text-gray-400 uppercase mb-2 text-center">慢性腎臟病分期對照表</h3>
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden text-xs">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600 border-b">
+                            <th class="p-2 font-semibold">分期</th>
+                            <th class="p-2 font-semibold">eGFR</th>
+                            <th class="p-2 font-semibold">說明</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr>
+                            <td class="p-2"><span class="bg-green-100 text-green-800 px-1.5 py-0.5 rounded">G1</span></td>
+                            <td class="p-2">≥ 90</td>
+                            <td class="p-2 text-gray-600">腎功能正常 (但在有蛋白尿等損傷證據時為CKD)</td>
+                        </tr>
+                        <tr>
+                            <td class="p-2"><span class="bg-green-100 text-green-800 px-1.5 py-0.5 rounded">G2</span></td>
+                            <td class="p-2">60 - 89</td>
+                            <td class="p-2 text-gray-600">腎功能輕度低下</td>
+                        </tr>
+                        <tr>
+                            <td class="p-2"><span class="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">G3a</span></td>
+                            <td class="p-2">45 - 59</td>
+                            <td class="p-2 text-gray-600">輕度至中度低下</td>
+                        </tr>
+                        <tr>
+                            <td class="p-2"><span class="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded">G3b</span></td>
+                            <td class="p-2">30 - 44</td>
+                            <td class="p-2 text-gray-600">中度至重度低下</td>
+                        </tr>
+                        <tr>
+                            <td class="p-2"><span class="bg-red-100 text-red-800 px-1.5 py-0.5 rounded">G4</span></td>
+                            <td class="p-2">15 - 29</td>
+                            <td class="p-2 text-gray-600">重度低下</td>
+                        </tr>
+                        <tr>
+                            <td class="p-2"><span class="bg-red-200 text-red-900 px-1.5 py-0.5 rounded">G5</span></td>
+                            <td class="p-2">< 15</td>
+                            <td class="p-2 text-gray-600">腎衰竭 (末期腎臟病)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer / Disclaimer -->
+        <footer class="mt-8 mb-4 text-center">
+            <p class="text-[10px] text-gray-400 max-w-xs mx-auto">
+                免責聲明：本工具僅供臨床參考，不應取代專業醫療診斷。
+                <br>設計者: 臨床藥師 (Based on 2021 CKD-EPI)
+                <br>資料來源: 財團法人腎臟病防治基金會
+            </p>
+        </footer>
+
+    </main>
+
+    <script>
+        let gender = 'male';
+
+        function setGender(selectedGender) {
+            gender = selectedGender;
+            
+            const btnMale = document.getElementById('btn-male');
+            const btnFemale = document.getElementById('btn-female');
+
+            if (gender === 'male') {
+                btnMale.className = 'toggle-btn active';
+                btnFemale.className = 'toggle-btn inactive';
+            } else {
+                btnMale.className = 'toggle-btn inactive';
+                btnFemale.className = 'toggle-btn active';
+            }
+            calculate();
+        }
+
+        function calculate() {
+            const ageInput = document.getElementById('age').value;
+            const scrInput = document.getElementById('scr').value;
+            const resultContainer = document.getElementById('result-container');
+            
+            // Basic validation
+            if (!ageInput || !scrInput || ageInput <= 0 || scrInput <= 0) {
+                resultContainer.classList.add('opacity-50');
+                document.getElementById('egfr-value').innerText = '--';
+                document.getElementById('stage-badge').className = 'inline-block px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-500';
+                document.getElementById('stage-badge').innerText = '等待輸入...';
+                document.getElementById('stage-desc').innerText = '--';
+                document.getElementById('clinical-note').innerText = '';
+                return;
+            }
+
+            resultContainer.classList.remove('opacity-50');
+
+            const age = parseFloat(ageInput);
+            const scr = parseFloat(scrInput);
+
+            // 2021 CKD-EPI Formula Constants
+            // eGFR = 142 * min(Scr/K, 1)^α * max(Scr/K, 1)^-1.200 * 0.9938^Age * 1.012 [if female]
+            
+            let k, alpha, femaleFactor;
+
+            if (gender === 'female') {
+                k = 0.7;
+                alpha = -0.241;
+                femaleFactor = 1.012;
+            } else { // male
+                k = 0.9;
+                alpha = -0.302;
+                femaleFactor = 1;
+            }
+
+            const scrOverK = scr / k;
+            const minPart = Math.min(scrOverK, 1);
+            const maxPart = Math.max(scrOverK, 1);
+
+            // Calculation
+            const egfr = 142 * Math.pow(minPart, alpha) * Math.pow(maxPart, -1.200) * Math.pow(0.9938, age) * femaleFactor;
+
+            // Display Result
+            const finalEgfr = egfr.toFixed(1);
+            document.getElementById('egfr-value').innerText = finalEgfr;
+
+            updateStage(egfr);
+        }
+
+        function updateStage(egfr) {
+            const badge = document.getElementById('stage-badge');
+            const desc = document.getElementById('stage-desc');
+            const note = document.getElementById('clinical-note');
+            
+            let stage = '';
+            let stageClass = '';
+            let stageText = '';
+            let noteText = '';
+
+            if (egfr >= 90) {
+                stage = 'G1';
+                stageClass = 'bg-medical-100 text-medical-800'; // Greenish/Blue
+                stageText = '正常或高濾過率';
+                noteText = '若無蛋白尿或其他腎臟損傷證據，未必為 CKD。請結合臨床狀況評估。';
+            } else if (egfr >= 60) {
+                stage = 'G2';
+                stageClass = 'bg-green-100 text-green-800';
+                stageText = '輕度低下';
+                noteText = '需評估是否有其他腎臟病風險因子或損傷證據。建議定期追蹤。';
+            } else if (egfr >= 45) {
+                stage = 'G3a';
+                stageClass = 'bg-yellow-100 text-yellow-800';
+                stageText = '輕度至中度低下';
+                noteText = '已屬慢性腎臟病範疇。應評估併發症並治療潛在原因，延緩惡化。';
+            } else if (egfr >= 30) {
+                stage = 'G3b';
+                stageClass = 'bg-orange-100 text-orange-800';
+                stageText = '中度至重度低下';
+                noteText = '積極控制血壓與蛋白尿，監測電解質與骨病變風險。';
+            } else if (egfr >= 15) {
+                stage = 'G4';
+                stageClass = 'bg-red-100 text-red-800';
+                stageText = '重度低下';
+                noteText = '準備腎臟替代療法之評估，建議轉介腎臟專科醫師。';
+            } else {
+                stage = 'G5';
+                stageClass = 'bg-red-200 text-red-900';
+                stageText = '腎衰竭';
+                noteText = '末期腎臟病 (ESRD)。需考慮透析或移植。';
+            }
+
+            badge.className = `inline-block px-3 py-1 rounded-full text-sm font-semibold ${stageClass}`;
+            badge.innerText = `CKD Stage ${stage}`;
+            desc.innerText = stageText;
+            note.innerText = noteText;
+        }
+    </script>
+</body>
+</html>
